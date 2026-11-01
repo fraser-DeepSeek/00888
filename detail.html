@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>帖子详情与私聊</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { margin: 0; min-height: 100vh; padding: 20px 16px; background: #f1f8e9; font-family: -apple-system, sans-serif; color: #333; }
+    .nav { max-width: 600px; margin: 0 auto 20px; display: flex; justify-content: space-between; }
+    .nav button { background: #fff; border: 2px solid #4CAF50; color: #4CAF50; padding: 6px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 14px;}
+    
+    .box { background: #fff; max-width: 600px; margin: 0 auto 20px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    .tag { background: #e8f5e9; color: #4CAF50; padding: 2px 8px; border-radius: 10px; font-size: 12px; float: right;}
+    
+    #chatMessages { height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 15px; border-radius: 8px; background: #fafafa; margin-bottom: 15px; display: flex; flex-direction: column; gap: 10px;}
+    
+    .msg-item { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.4; word-wrap: break-word;}
+    .msg-me { align-self: flex-end; background: #4CAF50; color: #fff; border-bottom-right-radius: 2px; }
+    .msg-other { align-self: flex-start; background: #e0e0e0; color: #333; border-bottom-left-radius: 2px; }
+    
+    .chat-input-area { display: flex; gap: 10px; }
+    .chat-input-area input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; font-size: 15px; }
+    .send-btn { background: #ffb300; color: #fff; border: none; padding: 0 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px;}
+    .send-btn:hover { background: #ffa000; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <button onclick="location.href='index.html'">← 返回</button>
+    <button onclick="goProfile()">我的</button>
+  </div>
+
+  <div class="box" id="postDetail">加载中…</div>
+
+  <div class="box">
+    <h3 style="margin-top:0; color: #1565c0;">私聊</h3>
+    <div id="chatMessages"></div>
+    <div class="chat-input-area">
+      <input id="chatInput" placeholder="输入你想说的话...">
+      <button class="send-btn" id="sendBtn">发送</button>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    const postId = new URLSearchParams(location.search).get('id');
+    if (!postId) location.href = 'index.html';
+    
+    let currentUser = null;
+    let postAuthorId = null;
+    let roomKey = null;
+
+    // 1. 初始化：获取用户信息并加载帖子
+    async function init() {
+      // 获取当前登录用户
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) {
+        alert("请先登录才能聊天哦！");
+        location.href = 'login.html';
+        return;
+      }
+      currentUser = session.user;
+
+      // 加载帖子详情
+      const { data: post, error } = await window.supabaseClient.from('posts').select('*').eq('id', postId).single();
+      
+      if (error || !post) {
+        document.getElementById('postDetail').innerHTML = '帖子不存在或已被删除';
+        return;
+      }
+
+      postAuthorId = post.user_id; // 记下发帖人的 ID
+
+      document.getElementById('postDetail').innerHTML = `
+        <div style="margin-bottom:15px;">
+          <span style="font-weight:bold; color:#1565c0; font-size: 16px;">发帖人: 邻居 (ID: ${post.user_id ? post.user_id.substring(0,4) : '匿名'})</span>
+          <span class="tag">${post.type === 'online' ? '线上' : '线下'}</span>
+        </div>
+        <p style="font-size:16px; line-height:1.6; margin-bottom:0;">${post.content}</p>
+        ${(post.images || []).map(u => `<img src="${u}" style="max-width:100%; border-radius:8px; margin-top:10px;">`).join('')}
+      `;
+
+      // 生成房间号（把帖子和聊天双方 ID 拼起来，确保不会串台）
+      // 如果发帖人就是自己，那 receiver_id 也用自己（方便测试）
+      const receiver = postAuthorId === currentUser.id ? currentUser.id : postAuthorId;
+      roomKey = [postId, currentUser.id, receiver].sort().join('_');
+
+      loadMessages();
+    }
+
+    // 2. 加载聊天记录
+    async function loadMessages() {
+      const { data: messages } = await window.supabaseClient
+        .from('messages')
+        .select('*')
+        .eq('room_key', roomKey)
+        .order('created_at', { ascending: true });
+      
+      const chatBox = document.getElementById('chatMessages');
+      
+      if (!messages || messages.length === 0) {
+        chatBox.innerHTML = `<div style="text-align:center; color:#999; font-size:14px; margin-top:20px;">还没有聊天记录，打个招呼吧！</div>`;
+        return;
+      }
+
+      chatBox.innerHTML = messages.map(m => {
+        const isMe = m.sender_id === currentUser.id;
+        return `
+          <div class="msg-item ${isMe ? 'msg-me' : 'msg-other'}">
+            ${m.content}
+          </div>
+        `;
+      }).join('');
+      
+      // 自动滚动到最底下
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // 3. 发送消息
+    document.getElementById('sendBtn').onclick = async () => {
+      const content = document.getElementById('chatInput').value.trim();
+      if (!content) return;
+      
+      const btn = document.getElementById('sendBtn');
+      btn.innerText = "..."; // 防抖
+
+      const receiver = postAuthorId === currentUser.id ? currentUser.id : postAuthorId;
+      
+      const { error } = await window.supabaseClient.from('messages').insert({
+        room_key: roomKey,
+        post_id: postId,
+        sender_id: currentUser.id,
+        receiver_id: receiver,
+        content: content
+      });
+
+      btn.innerText = "发送"; // 恢复按钮
+      
+      if (error) {
+        alert('发送失败：' + error.message);
+      } else {
+        document.getElementById('chatInput').value = '';
+        loadMessages(); // 刷新聊天列表
+      }
+    };
+
+    // 回车键也能发送
+    document.getElementById('chatInput').addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        document.getElementById('sendBtn').click();
+      }
+    });
+
+    // 启动
+    init();
+  </script>
+</body>
+</html>
