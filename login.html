@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>登录 - 邻里帮帮帮</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: -apple-system, sans-serif; padding: 20px; background: #f1f8e9; }
+    .login-box { background: #fff; max-width: 400px; margin: 50px auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    h2 { text-align: center; color: #1565c0; }
+    input { display: block; margin-bottom: 15px; padding: 10px; width: 100%; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+    button { padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; width: 100%; cursor: pointer; }
+    #msg { text-align: center; margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <div class="login-box">
+    <h2>登录邻里帮帮帮</h2>
+    <input type="email" id="email" placeholder="请输入邮箱" value="fraser.icare@yahoo.com">
+    <input type="password" id="password" placeholder="请输入密码">
+    <button id="loginBtn">登 录</button>
+    <div id="msg"></div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    document.getElementById('loginBtn').onclick = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const msgDiv = document.getElementById('msg');
+      
+      msgDiv.style.color = "#333";
+      msgDiv.innerText = "正在登录...";
+      
+      // 使用 window.supabaseClient 保证能连上
+      const { data, error } = await window.supabaseClient.auth.signInWithPassword({ 
+        email: email, 
+        password: password 
+      });
+      
+      if (error) {
+        msgDiv.style.color = "#d32f2f"; // 失败变红
+        msgDiv.innerText = "登录失败：" + error.message;
+      } else {
+        msgDiv.style.color = "#4CAF50"; // 成功变绿
+        msgDiv.innerText = "登录成功！正在进入...";
+        
+        // 停 1 秒后自动跳转，不需要按 Close
+        setTimeout(() => {
+          location.href = 'index.html';
+        }, 1000);
+      }
+    }
+  </script>
+</body>
+</html>
